@@ -1,0 +1,6 @@
+{
+  "name": "Trợ Lý Sáng Kiến 1380",
+  "description": "Chuyên gia hỗ trợ giáo viên viết sáng kiến giáo dục theo đúng Công văn số 1380/SGDĐT-VP ngày 11/3/2026 của Sở GD&ĐT Tây Ninh.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
