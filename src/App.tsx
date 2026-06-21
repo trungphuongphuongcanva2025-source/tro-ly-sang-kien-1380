@@ -1222,6 +1222,52 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Thông tin đơn vị công tác */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Cấp học giảng dạy *
+                  </label>
+                  <select
+                    value={form.schoolLevel}
+                    onChange={(e) => setForm({ ...form, schoolLevel: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-800 focus:outline-none focus:border-brand-blue-600 focus:ring-1 focus:ring-brand-blue-600 transition"
+                  >
+                    <option value="Tiểu học">Tiểu học</option>
+                    <option value="THCS">THCS</option>
+                    <option value="THPT">THPT</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Trường công tác *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ví dụ: Trường Tiểu học Ngô Thất Sơn"
+                    value={form.schoolName}
+                    onChange={(e) => setForm({ ...form, schoolName: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-800 focus:outline-none focus:border-brand-blue-600 focus:ring-1 focus:ring-brand-blue-600 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Tỉnh / Thành phố *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ví dụ: Tây Ninh"
+                    value={form.province}
+                    onChange={(e) => setForm({ ...form, province: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-800 focus:outline-none focus:border-brand-blue-600 focus:ring-1 focus:ring-brand-blue-600 transition"
+                  />
+                </div>
+              </div>
+
               {/* Đối tượng nghiên cứu */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">

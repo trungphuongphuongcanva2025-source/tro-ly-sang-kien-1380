@@ -168,10 +168,10 @@ app.post("/api/generate-initiative", async (req, res) => {
 
   const { title, level, inputData } = req.body;
   const sLevel = req.body.sLevel || inputData?.schoolLevel || "THCS";
-  const sName = req.body.sName || inputData?.schoolName || "";
+  const sName = req.body.sName || inputData?.schoolName || "Trường học tại địa phương";
   const prov = req.body.prov || inputData?.province || "Tây Ninh";
 
-  if (!title || !level || !inputData || !sLevel || !sName || !prov) {
+  if (!title || !level || !inputData) {
     return res.status(400).json({ error: "Thiếu dữ liệu để tạo sáng kiến chi tiết." });
   }
 
