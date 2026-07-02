@@ -361,14 +361,14 @@ app.post("/api/refine-initiative", async (req, res) => {
 MỤC TIÊU PHẠM VI & DUNG LƯỢNG BẮT BUỘC:
 - Nhận được bản sáng kiến hiện có.
 - Thực thi ý kiến tinh chỉnh mới nhất của giáo viên: "${instruction}".
-- ĐIỀU CHỈNH nội dung theo yêu cầu. Khuyến khích viết chi tiết, diễn giải phong phú, số liệu sinh động. KHÔNG viết ngắn gọn. Tùy thuộc vào yêu cầu của giáo viên mà bạn có thể viết dài hay ngắn, tuy nhiên nếu viết lại toàn bài, độ dài kỳ vọng là 8000 - 9000 từ. Nếu viết lại một mục, hãy viết dài ít nhất 800 - 1500 từ cho mục đó.
-
+- BẮT BUỘC GIỮ NGUYÊN HOÀN TOÀN nội dung của các phần KHÔNG ĐƯỢC YÊU CẦU CHỈNH SỬA (không được tóm tắt, không được cắt bớt). 
+- ĐIỀU CHỈNH nội dung phần được yêu cầu. Khuyến khích viết chi tiết, diễn giải phong phú, số liệu sinh động. KHÔNG viết ngắn gọn. Nếu viết lại một mục, hãy viết dài ít nhất 800 - 1500 từ cho mục đó để đảm bảo tổng độ dài sáng kiến sau khi cập nhật không bị ngắn đi.
 QUY TẮC PHẢN HỒI THEO MỤC TIÊU TINH CHỈNH (MỚI):
 - Nếu chỉ thị tinh chỉnh liên quan đến việc cấu trúc lại hoặc viết lại theo đề cương tỉnh/thành phố (Khi người dùng sử dụng các lệnh như: "Giai đoạn 4", "Theo đề cương này", "Viết theo đề cương", "Chỉnh theo đề cương tỉnh tôi", cụm từ "đề cương", hoặc cấu trúc đề cương dán vào):
   1. Phân tích kỹ đề cương mà người dùng dán vào (xác định các phần, thứ tự, tiêu đề mục).
   2. Lấy nội dung sáng kiến hiện có (từ Giai đoạn 2 hoặc 3).
-  3. Viết lại toàn bộ sáng kiến theo đúng cấu trúc, thứ tự và tiêu đề của đề cương người dùng cung cấp. Giữ nguyên tinh thần, nội dung thực tiễn, ví dụ minh họa, giọng văn chân thực chống AI đã có.
-  4. Nếu đề cương thiếu một số phần của sáng kiến, bạn có thể giữ hoặc bổ sung hợp lý để bài viết trọn vẹn và đầy đủ thông tin nhất.
+  3. Viết lại toàn bộ sáng kiến theo đúng cấu trúc, thứ tự và tiêu đề của đề cương người dùng cung cấp. BẮT BUỘC giữ nguyên toàn bộ độ chi tiết, chiều dài, ví dụ minh họa và nội dung thực tiễn của bản cũ. Tuyệt đối không được tóm tắt, cắt bớt hay làm ngắn đi bất kỳ phần nào. Tổng độ dài của bài sau khi chuyển đổi theo đề cương phải BẰNG hoặc DÀI HƠN so với bài cũ.
+  4. Nếu đề cương thiếu một số phần của sáng kiến cũ, bạn BẮT BUỘC phải giữ và lồng ghép bổ sung hợp lý vào các mục tương đương để bài viết không bị mất nội dung và không bị ngắn đi.
   5. Trả về toàn bộ sáng kiến đã được tái cấu trúc sắp xếp lại theo đề cương trong trường 'content'.
   6. Trong trường 'displayContent', bạn KHÔNG chỉ trả về chuỗi rỗng mà phải trả về đúng cấu trúc yêu cầu:
      Bắt đầu bằng lời xác nhận: "✅ Đã nhận đề cương và đang viết lại theo đúng cấu trúc đề cương của bạn."
@@ -509,7 +509,8 @@ ${content}
 ---
 
 Hãy tiến hành chỉnh sửa đáp ứng yêu cầu sư phạm sau của tôi: "${instruction}".
-Sau khi đáp ứng, hãy ĐIỀU CHỈNH và MỞ RỘNG tất cả các phần để đưa tổng độ dài toàn bộ sáng kiến (gồm tất cả các phần) đạt ngưỡng BẮT BUỘC từ 8000 đến 9000 từ tiếng Việt hoàn chỉnh tuyệt đối (tương đương 22 trang giấy A4).
+Sau khi đáp ứng, BẮT BUỘC GIỮ NGUYÊN 100% nội dung của các phần không nằm trong yêu cầu chỉnh sửa. Tuyệt đối không được tóm tắt, cắt bớt hay làm ngắn đi các phần cũ. 
+Phần mới được chỉnh sửa/bổ sung phải thật chi tiết và dài để tổng độ dài toàn bộ sáng kiến sau khi cập nhật phải giữ nguyên độ dài hoặc dài hơn bản cũ.
 
 Hãy phân tích và trả về định dạng JSON thuần thúy theo cấu trúc của Schema như yêu cầu.`;
 

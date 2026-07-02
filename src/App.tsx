@@ -494,7 +494,7 @@ export default function App() {
   };
 
   const handleDownload = () => {
-    handleDownloadFormat("docx");
+    handleDownloadFormat("doc");
   };
 
   const handleDownloadFormat = (format: "txt" | "doc" | "docx") => {
@@ -1781,24 +1781,13 @@ export default function App() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleDownloadFormat("docx")}
+                        onClick={() => handleDownloadFormat("doc")}
                         className="w-full px-3.5 py-2.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-brand-blue-800 flex items-start gap-2.5 transition text-left cursor-pointer"
                       >
                         <FileText className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
                         <div>
-                          <p className="font-semibold text-slate-800">Tải Word (.docx)</p>
-                          <p className="text-[9.5px] text-slate-400 font-normal">Định dạng khuyên dùng tối ưu</p>
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDownloadFormat("doc")}
-                        className="w-full px-3.5 py-2.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-brand-blue-800 flex items-start gap-2.5 transition text-left cursor-pointer"
-                      >
-                        <FileText className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                        <div>
                           <p className="font-semibold text-slate-800">Tải Word (.doc)</p>
-                          <p className="text-[9.5px] text-slate-400 font-normal">Dành cho bộ Office đời cũ</p>
+                          <p className="text-[9.5px] text-slate-400 font-normal">Định dạng khuyên dùng tối ưu</p>
                         </div>
                       </button>
                       <button
