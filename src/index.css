@@ -26,15 +26,27 @@
 
 @media (min-width: 768px) {
   .paper-container {
-    padding-top: 2cm !important;
-    padding-bottom: 2cm !important;
-    padding-left: 3cm !important;
-    padding-right: 2cm !important;
-    width: 21cm !important;
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
+    padding-left: 2.5rem !important;
+    padding-right: 2rem !important;
+    width: 100% !important;
+    max-width: 21cm !important;
     min-height: 29.7cm !important;
     margin-left: auto !important;
     margin-right: auto !important;
     box-sizing: border-box !important;
+    overflow-x: hidden !important;
+    word-wrap: break-word !important;
+  }
+}
+
+@media (min-width: 1280px) {
+  .paper-container {
+    padding-top: 2cm !important;
+    padding-bottom: 2cm !important;
+    padding-left: 3cm !important;
+    padding-right: 2cm !important;
   }
 }
 

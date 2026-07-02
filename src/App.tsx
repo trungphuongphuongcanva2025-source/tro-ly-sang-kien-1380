@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { 
   GraduationCap, 
   Sparkles, 
@@ -111,14 +111,24 @@ export default function App() {
 
   // Quick Display and API Settings config states
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [customApiKey, setCustomApiKey] = useState<string>(() => {
+  const [customApiKeys, setCustomApiKeys] = useState<string[]>(() => {
     try {
-      return localStorage.getItem("gemini_custom_api_key") || "";
+      const newKeysStr = localStorage.getItem("gemini_custom_api_keys");
+      if (newKeysStr) {
+        const parsed = JSON.parse(newKeysStr);
+        return Array.isArray(parsed) && parsed.length === 3 ? parsed : [parsed[0] || "", parsed[1] || "", parsed[2] || ""];
+      } else {
+        // Migration from old single key
+        const oldKey = localStorage.getItem("gemini_custom_api_key") || "";
+        const initialKeys = [oldKey, "", ""];
+        localStorage.setItem("gemini_custom_api_keys", JSON.stringify(initialKeys));
+        return initialKeys;
+      }
     } catch (e) {
-      return "";
+      return ["", "", ""];
     }
   });
-  const [showApiKey, setShowApiKey] = useState<boolean>(false);
+  const [showApiKey, setShowApiKey] = useState<boolean[]>([false, false, false]);
   const [fontSize, setFontSize] = useState<"sm" | "md" | "lg" | "xl">(() => {
     try {
       return (localStorage.getItem("pref_font_size") as "sm" | "md" | "lg" | "xl") || "md";
@@ -142,11 +152,13 @@ export default function App() {
     }
   });
 
-  const handleSaveApiKey = (key: string) => {
+  const handleSaveApiKey = (index: number, key: string) => {
     const trimmed = key.trim();
-    setCustomApiKey(trimmed);
+    const newKeys = [...customApiKeys];
+    newKeys[index] = trimmed;
+    setCustomApiKeys(newKeys);
     try {
-      localStorage.setItem("gemini_custom_api_key", trimmed);
+      localStorage.setItem("gemini_custom_api_keys", JSON.stringify(newKeys));
     } catch (e) {
       console.warn("Storage writing failed:", e);
     }
@@ -155,10 +167,12 @@ export default function App() {
     }, 150);
   };
 
-  const handleResetApiKey = () => {
-    setCustomApiKey("");
+  const handleResetApiKeys = () => {
+    const defaultKeys = ["", "", ""];
+    setCustomApiKeys(defaultKeys);
     try {
       localStorage.removeItem("gemini_custom_api_key");
+      localStorage.setItem("gemini_custom_api_keys", JSON.stringify(defaultKeys));
     } catch (e) {
       console.warn("Storage removal failed:", e);
     }
@@ -220,12 +234,12 @@ export default function App() {
 
   const checkHealth = async () => {
     try {
-      let activeKey = "";
+      let activeKeys = "";
       try {
-        activeKey = localStorage.getItem("gemini_custom_api_key") || "";
+        activeKeys = localStorage.getItem("gemini_custom_api_keys") || "";
       } catch (e) {}
       const res = await fetch("/api/health", {
-        headers: activeKey ? { "x-api-key": activeKey } : {}
+        headers: activeKeys ? { "x-api-keys": activeKeys } : {}
       });
       const data = await res.json();
       setHealth({
@@ -296,12 +310,12 @@ export default function App() {
     setSelectedNameId("");
 
     try {
-      const activeKey = localStorage.getItem("gemini_custom_api_key") || "";
+      const activeKeys = localStorage.getItem("gemini_custom_api_keys") || "";
       const response = await fetch("/api/suggest-names", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          ...(activeKey ? { "x-api-key": activeKey } : {})
+          ...(activeKeys ? { "x-api-keys": activeKeys } : {})
         },
         body: JSON.stringify(processedForm)
       });
@@ -337,9 +351,9 @@ export default function App() {
     setOutlineText("");
 
     try {
-      let activeKey = "";
+      let activeKeys = "";
       try {
-        activeKey = localStorage.getItem("gemini_custom_api_key") || "";
+        activeKeys = localStorage.getItem("gemini_custom_api_keys") || "";
       } catch (e) {}
 
       const processedForm = { ...form };
@@ -351,7 +365,7 @@ export default function App() {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          ...(activeKey ? { "x-api-key": activeKey } : {})
+          ...(activeKeys ? { "x-api-keys": activeKeys } : {})
         },
         body: JSON.stringify({
           title: nameObj.name,
@@ -407,15 +421,15 @@ export default function App() {
     setIsRefining(true);
     setLastRefinementMsg("");
     try {
-      let activeKey = "";
+      let activeKeys = "";
       try {
-        activeKey = localStorage.getItem("gemini_custom_api_key") || "";
+        activeKeys = localStorage.getItem("gemini_custom_api_keys") || "";
       } catch (e) {}
       const response = await fetch("/api/refine-initiative", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          ...(activeKey ? { "x-api-key": activeKey } : {})
+          ...(activeKeys ? { "x-api-keys": activeKeys } : {})
         },
         body: JSON.stringify({
           title: selectedNameId ? suggestions.find(s => s.id === selectedNameId)?.name || "" : "Sáng kiến Giáo dục Tây Ninh",
@@ -506,11 +520,70 @@ export default function App() {
     const lines = detailedContent.split("\n");
     let htmlContent = "";
 
-    lines.forEach((line) => {
-      const trimmed = line.trim();
+    let inTable = false;
+    let tableHtml = "";
+
+    for (let i = 0; i < lines.length; i++) {
+      let trimmed = lines[i].trim();
+      
+      // Remove leading markdown header hashes
+      trimmed = trimmed.replace(/^#+\s*/, "");
+
       if (!trimmed) {
-        htmlContent += "<p style='margin: 0 0 6pt 0;'>&nbsp;</p>";
-        return;
+        // Skip empty lines to prevent excessive blank lines/double spacing
+        continue;
+      }
+
+      // Check if it is a table row (even if broken across lines)
+      if (trimmed.startsWith("|")) {
+        let rowString = trimmed;
+        let j = i;
+        
+        // If the row doesn't end with "|", it might be broken across multiple lines by the AI
+        while (!rowString.endsWith("|") && j + 1 < lines.length) {
+            let nextTrimmed = lines[j+1].trim();
+            if (nextTrimmed === "" || nextTrimmed.startsWith("|")) {
+                break; // Stop if empty line or start of next row
+            }
+            j++;
+            rowString += " " + nextTrimmed;
+        }
+        
+        // We merged broken lines, update our main loop index
+        i = j;
+
+        if (!inTable) {
+          inTable = true;
+          tableHtml = `<table border="1" cellspacing="0" cellpadding="5" style="width: 100%; border-collapse: collapse; font-family: 'Times New Roman', serif; font-size: 11pt; margin-bottom: 12pt;"><tbody>`;
+        }
+        
+        // Skip Markdown separator row e.g. |---|---|
+        if (rowString.match(/^\|[\s\-\|]+\|$/) || rowString.replace(/\|/g, "").replace(/-/g, "").trim() === "") {
+          continue;
+        }
+
+        // Force close if it still doesn't end with |
+        if (!rowString.endsWith("|")) rowString += "|";
+
+        tableHtml += "<tr>";
+        const cells = rowString.substring(1, rowString.length - 1).split("|");
+        cells.forEach((cell) => {
+          let formattedCell = cell.trim()
+            .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+            .replace(/\*(.*?)\*/g, "<em>$1</em>");
+          tableHtml += `<td style="border: 1pt solid #000; padding: 4pt; text-align: left; vertical-align: top;">${formattedCell}</td>`;
+        });
+        tableHtml += "</tr>";
+
+        // Peek next line to see if table continues
+        const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : "";
+        if (!nextLine.startsWith("|")) {
+          inTable = false;
+          tableHtml += "</tbody></table>";
+          htmlContent += tableHtml;
+          tableHtml = "";
+        }
+        continue;
       }
 
       // Format bold, italics
@@ -520,21 +593,23 @@ export default function App() {
         .replace(/`(.*?)`/g, "<code>$1</code>");
 
       // Check headings
-      const isHeaderAtoC = trimmed.match(/^[A-C]\.\s+[A-ZÀ-ỸĐ\s\d\-]+$/);
-      const isIntroHeader = trimmed.startsWith("📝 NỘI DUNG SÁNG KIẾN") || trimmed.startsWith("TÊN SÁNG KIẾN") || trimmed.startsWith("**TÊN SÁNG KIẾN");
+      const isHeaderAtoC = trimmed.match(/^(?:\*\*)?[A-E]\.\s+/i);
+      const isIntroHeader = trimmed.match(/^(?:\*\*)?(📝 NỘI DUNG SÁNG KIẾN|TÊN SÁNG KIẾN)(?:\*\*)?/i);
       
       if (isHeaderAtoC || isIntroHeader) {
+        const cleanTitle = formattedLine.replace(/📝\s*/, "").replace(/<\/?strong>/g, "");
         htmlContent += `
           <h2 style="font-family: 'Times New Roman', serif; font-size: 14pt; font-weight: bold; text-transform: uppercase; color: #1e3a8a; margin-top: 24pt; margin-bottom: 8pt; border-bottom: 1.5pt solid #1e3a8a; padding-bottom: 4pt; text-align: left;">
-            ${formattedLine.replace(/📝\s*/, "").replace(/\*\*\s*/, "")}
+            ${cleanTitle}
           </h2>`;
-      } else if (trimmed.match(/^(\d+|\bGiải pháp\b\s+\d+\.\d+)\.?\s/) || trimmed.match(/^\d+\.\s+/)) {
+      } else if (trimmed.match(/^(?:\*\*)?(\d+(\.\d+)*)\.?\s/) || trimmed.match(/^(?:\*\*)?Giải pháp/i)) {
+        const cleanTitle = formattedLine.replace(/<\/?strong>/g, "");
         htmlContent += `
           <h3 style="font-family: 'Times New Roman', serif; font-size: 13pt; font-weight: bold; color: #1d4ed8; margin-top: 16pt; margin-bottom: 6pt; text-align: justify; text-indent: 0in;">
-            ${formattedLine}
+            ${cleanTitle}
           </h3>`;
-      } else if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
-        const cleanLi = formattedLine.replace(/^[\-\*]\s*/, "");
+      } else if (trimmed.startsWith("-") || trimmed.startsWith("*") || trimmed.startsWith("•")) {
+        const cleanLi = formattedLine.replace(/^<strong>[\-\*•]<\/strong>\s*/, "").replace(/^[\-\*•]\s*/, "");
         htmlContent += `
           <ul style="margin: 0 0 6pt 0; padding-left: 20px;">
             <li style="font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.5; margin-bottom: 4pt; text-align: justify;">
@@ -553,7 +628,7 @@ export default function App() {
             ${formattedLine}
           </p>`;
       }
-    });
+    }
 
     const wordHTML = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
@@ -748,13 +823,85 @@ export default function App() {
     let i = 0;
     while (i < lines.length) {
       const line = lines[i];
-      const trimmed = line.trim();
+      let trimmed = line.trim();
+      
+      // Remove leading markdown header hashes
+      trimmed = trimmed.replace(/^#+\s*/, "");
       
       // Empty line check
       if (trimmed === "") {
         elements.push(<div key={`empty-${i}`} className="h-4" />);
         i++;
         continue;
+      }
+
+      // Table detection
+      if (trimmed.startsWith("|")) {
+          const rows: string[] = [];
+          
+          while (i < lines.length) {
+             let rowString = lines[i].trim();
+             
+             if (!rowString.startsWith("|") && rows.length === 0) {
+                 break;
+             }
+             
+             if (!rowString.startsWith("|")) {
+                 break; // Table ended
+             }
+
+             // Merge broken rows
+             let j = i;
+             while (!rowString.endsWith("|") && j + 1 < lines.length) {
+                 let nextTrimmed = lines[j+1].trim();
+                 if (nextTrimmed === "" || nextTrimmed.startsWith("|")) {
+                     break;
+                 }
+                 j++;
+                 rowString += " " + nextTrimmed;
+             }
+             
+             i = j; // update main loop
+             
+             // Check if it's not a separator
+             if (!rowString.match(/^\|[\s\-\|]+\|$/) && rowString.replace(/\|/g, "").replace(/-/g, "").trim() !== "") {
+                 if (!rowString.endsWith("|")) rowString += "|";
+                 rows.push(rowString);
+             }
+             
+             i++;
+             if (i < lines.length && !lines[i].trim().startsWith("|")) {
+                 break;
+             }
+          }
+          
+          if (rows.length > 0) {
+             elements.push(
+                <div key={`table-${i}`} className="overflow-x-auto my-6 border border-slate-300 rounded-lg shadow-sm">
+                   <table className="min-w-full border-collapse bg-white text-[13pt] font-serif">
+                      <tbody>
+                         {rows.map((row, rIdx) => {
+                            const cells = row.substring(1, row.length - 1).split("|");
+                            return (
+                               <tr key={`tr-${rIdx}`} className={rIdx === 0 ? "bg-slate-100 font-bold border-b border-slate-300" : "border-b border-slate-200"}>
+                                  {cells.map((cell, cIdx) => {
+                                     let formattedCell = cell.trim()
+                                       .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+                                       .replace(/\*(.*?)\*/g, "<em>$1</em>")
+                                       .replace(/`/g, "");
+                                     return (
+                                       <td key={`td-${cIdx}`} className="border-r last:border-r-0 border-slate-300 px-4 py-3 text-slate-800 text-justify align-top" dangerouslySetInnerHTML={{ __html: formattedCell }} />
+                                     );
+                                  })}
+                               </tr>
+                            )
+                         })}
+                      </tbody>
+                   </table>
+                </div>
+             );
+          }
+          continue;
       }
 
       // Check for Stage or general metadata lines that shouldn't look like formal body paragraphs
@@ -887,6 +1034,19 @@ export default function App() {
     
     return elements;
   };
+
+  const detailedWordCount = useMemo(() => {
+    if (!detailedContent) return 0;
+    return detailedContent.trim().split(/\s+/).filter(Boolean).length;
+  }, [detailedContent]);
+
+  const renderedDetailedContent = useMemo(() => {
+    return renderFormattedText(detailedContent);
+  }, [detailedContent]);
+
+  const renderedDisplayContent = useMemo(() => {
+    return renderFormattedText(displayContent);
+  }, [displayContent]);
 
   return (
     <div className="min-h-screen bg-[#f4f7f9] text-slate-800 font-sans border-[12px] border-slate-200 flex flex-col overflow-x-hidden">
@@ -1152,7 +1312,7 @@ export default function App() {
         <main className="flex-1 w-full p-6 overflow-y-auto bg-[#f8fafc] grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* LEFT COLUMN: PRESETS, USER CONTEXT & INPUTS */}
-        <section className="lg:col-span-5 space-y-6 no-print">
+        <section className={`lg:col-span-5 space-y-6 no-print ${stage >= 2 ? 'hidden' : 'block'}`}>
           
           {/* Quick presets helper */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
@@ -1413,7 +1573,7 @@ export default function App() {
         </section>
 
         {/* RIGHT COLUMN: DETAILED WORKSPACE OUTPUT FEED */}
-        <section id="output-panel" className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-sm min-h-[600px] flex flex-col overflow-hidden">
+        <section id="output-panel" className={`${stage >= 2 ? 'lg:col-span-12' : 'lg:col-span-7'} bg-white rounded-2xl border border-slate-200 shadow-sm min-h-[600px] flex flex-col overflow-hidden`}>
           
           {/* Non-active State: Greeting & Instructions */}
           {!isSuggesting && !isGenerating && suggestions.length === 0 && !detailedContent && (
@@ -1784,7 +1944,7 @@ export default function App() {
                       <div className="p-2 bg-slate-100 border border-slate-200 rounded-lg text-[11px] flex items-center justify-between font-mono">
                         <span className="text-slate-500">Độ dài hiện tại:</span>
                         <span className="font-bold text-brand-blue-800">
-                          {detailedContent.trim().split(/\s+/).filter(Boolean).length} chữ
+                          {detailedWordCount} chữ
                         </span>
                       </div>
 
@@ -1924,10 +2084,10 @@ export default function App() {
                             Hiển thị toàn bộ sáng kiến
                           </button>
                         </div>
-                        {renderFormattedText(displayContent)}
+                        {renderedDisplayContent}
                       </div>
                     ) : (
-                      renderFormattedText(detailedContent)
+                      renderedDetailedContent
                     )}
                     
                     {/* Helping Anchors placed behind relative positions */}
@@ -1957,7 +2117,7 @@ export default function App() {
                           Giai đoạn 3: Tinh chỉnh & Mở rộng Sáng kiến (Thích ứng Di động & Máy tính)
                         </h4>
                         <span className="text-[11px] font-mono bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded">
-                          Độ dài: {detailedContent.trim().split(/\s+/).filter(Boolean).length} chữ
+                          Độ dài: {detailedWordCount} chữ
                         </span>
                       </div>
 
@@ -2018,7 +2178,7 @@ export default function App() {
                           Giai đoạn 4: Đột phá cấu trúc theo đề cương tỉnh (Thích ứng Di động & Máy tính)
                         </h4>
                         <span className="text-[11px] font-mono bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded">
-                          Độ dài: {detailedContent.trim().split(/\s+/).filter(Boolean).length} chữ
+                          Độ dài: {detailedWordCount} chữ
                         </span>
                       </div>
 
@@ -2210,12 +2370,12 @@ export default function App() {
               <div className="space-y-3 pt-3 border-t border-slate-100">
                 <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pb-1 border-b border-slate-100">Thay thế Gemini API Key</h3>
                 
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center mb-1">
                     <label className="text-xs font-semibold text-slate-700">Khóa cá nhân của bạn:</label>
-                    {customApiKey && (
+                    {customApiKeys.some(k => k) && (
                       <button 
-                        onClick={handleResetApiKey}
+                        onClick={handleResetApiKeys}
                         className="text-[9px] text-red-500 hover:underline cursor-pointer"
                         type="button"
                       >
@@ -2223,24 +2383,30 @@ export default function App() {
                       </button>
                     )}
                   </div>
-                  
-                  <div className="relative flex items-center">
-                    <input
-                      type={showApiKey ? "text" : "password"}
-                      value={customApiKey}
-                      onChange={(e) => handleSaveApiKey(e.target.value)}
-                      placeholder="• Nhập API Key thay thế..."
-                      className="w-full text-xs font-mono px-2.5 py-1.5 border rounded-md border-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 pr-10 text-left bg-slate-50"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer p-1"
-                      title={showApiKey ? "Ẩn khóa" : "Hiển thị khóa"}
-                    >
-                      <span className="text-[9px] font-bold uppercase">{showApiKey ? "Ẩn" : "Hiện"}</span>
-                    </button>
-                  </div>
+
+                  {[0, 1, 2].map((index) => (
+                    <div key={index} className="relative flex items-center">
+                      <input
+                        type={showApiKey[index] ? "text" : "password"}
+                        value={customApiKeys[index] || ""}
+                        onChange={(e) => handleSaveApiKey(index, e.target.value)}
+                        placeholder={`• Nhập API Key thay thế số ${index + 1}...`}
+                        className="w-full text-xs font-mono px-2.5 py-1.5 border rounded-md border-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 pr-10 text-left bg-slate-50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newShow = [...showApiKey];
+                          newShow[index] = !newShow[index];
+                          setShowApiKey(newShow);
+                        }}
+                        className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer p-1"
+                        title={showApiKey[index] ? "Ẩn khóa" : "Hiển thị khóa"}
+                      >
+                        <span className="text-[9px] font-bold uppercase">{showApiKey[index] ? "Ẩn" : "Hiện"}</span>
+                      </button>
+                    </div>
+                  ))}
                   
                   <div className="text-[10px] leading-relaxed text-slate-400 space-y-1 bg-slate-50 p-2 border border-slate-100 rounded-lg text-justify">
                     <p className="font-semibold text-slate-500">💡 Hướng dẫn thiết lập:</p>

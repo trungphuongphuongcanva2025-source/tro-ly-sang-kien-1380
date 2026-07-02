@@ -42,44 +42,77 @@ if (apiKey) {
   });
 }
 
-function getAiClient(req: express.Request): GoogleGenAI | null {
-  const customApiKey = req.headers["x-api-key"];
-  if (customApiKey && typeof customApiKey === "string" && customApiKey.trim() !== "") {
-    return new GoogleGenAI({
-      apiKey: customApiKey.trim(),
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
-      },
-    });
-  }
-  return defaultAi;
-}
-
-async function generateWithRetry(activeAi: any, options: any, retries = 4, baseDelayMs = 15000) {
-  for (let i = 0; i < retries; i++) {
+function getAiClients(req: express.Request): GoogleGenAI[] {
+  const customApiKeysStr = req.headers["x-api-keys"];
+  const clients: GoogleGenAI[] = [];
+  
+  if (customApiKeysStr && typeof customApiKeysStr === "string") {
     try {
-      return await activeAi.models.generateContent(options);
-    } catch (error: any) {
-      const errorMsg = error?.message || error?.toString() || "";
-      const isRateLimit = error?.status === 429 || errorMsg.includes("429") || errorMsg.includes("Quota") || errorMsg.includes("RESOURCE_EXHAUSTED");
-      if (isRateLimit && i < retries - 1) {
-        const jitter = Math.random() * 2000;
-        console.warn(`[Rate Limit 429] Quota exceeded. Retrying in ${Math.round(baseDelayMs + jitter)}ms... (Attempt ${i + 1}/${retries})`);
-        await new Promise((resolve) => setTimeout(resolve, baseDelayMs + jitter));
-        baseDelayMs *= 1.5; // Exponential backoff
-        continue;
+      const keys = JSON.parse(customApiKeysStr);
+      if (Array.isArray(keys)) {
+        for (const key of keys) {
+          if (typeof key === "string" && key.trim() !== "") {
+            clients.push(new GoogleGenAI({
+              apiKey: key.trim(),
+              httpOptions: { headers: { "User-Agent": "aistudio-build" } }
+            }));
+          }
+        }
       }
-      throw error;
+    } catch(e) {
+      // Ignore parse error
     }
   }
+  
+  if (clients.length === 0 && defaultAi) {
+    clients.push(defaultAi);
+  }
+  
+  return clients;
+}
+
+async function generateWithRetry(activeAiClients: GoogleGenAI[], options: any, retriesPerKey = 2, baseDelayMs = 5000) {
+  if (!activeAiClients || activeAiClients.length === 0) {
+    throw new Error("Không có API Key nào được định cấu hình. Vui lòng thêm trong Cài đặt.");
+  }
+  
+  for (let i = 0; i < retriesPerKey; i++) {
+    for (let clientIndex = 0; clientIndex < activeAiClients.length; clientIndex++) {
+      try {
+        return await activeAiClients[clientIndex].models.generateContent(options);
+      } catch (error: any) {
+        const errorMsg = error?.message || error?.toString() || "";
+        const isRateLimit = error?.status === 429 || errorMsg.includes("429") || errorMsg.includes("Quota") || errorMsg.includes("RESOURCE_EXHAUSTED");
+        
+        if (isRateLimit) {
+           console.warn(`[Rate Limit 429] Quota exceeded for key index ${clientIndex}. Trying next...`);
+           
+           if (clientIndex === activeAiClients.length - 1 && i < retriesPerKey - 1) {
+             const jitter = Math.random() * 2000;
+             console.warn(`All keys exhausted. Retrying in ${Math.round(baseDelayMs + jitter)}ms...`);
+             await new Promise((resolve) => setTimeout(resolve, baseDelayMs + jitter));
+             baseDelayMs *= 1.5;
+           }
+           continue; 
+        }
+        
+        throw error;
+      }
+    }
+  }
+  throw new Error("Tất cả các API key đều đã quá tải (Lỗi 429). Vui lòng thử lại sau vài phút.");
 }
 
 // Keep a simple API status endpoint
 app.get("/api/health", (req, res) => {
-  const customApiKey = req.headers["x-api-key"];
-  const hasKey = !!process.env.GEMINI_API_KEY || (typeof customApiKey === "string" && customApiKey.trim() !== "");
+  const customApiKeyStr = req.headers["x-api-keys"];
+  let hasCustom = false;
+  try {
+     const keys = JSON.parse(customApiKeyStr as string);
+     hasCustom = Array.isArray(keys) && keys.some(k => typeof k === 'string' && k.trim() !== "");
+  } catch(e) {}
+  
+  const hasKey = !!process.env.GEMINI_API_KEY || hasCustom;
   res.json({
     status: "ok",
     hasApiKey: hasKey,
@@ -89,8 +122,8 @@ app.get("/api/health", (req, res) => {
 
 // STAGE 1: Suggest Names Endpoint
 app.post("/api/suggest-names", async (req, res) => {
-  const activeAi = getAiClient(req);
-  if (!activeAi) {
+  const clients = getAiClients(req);
+  if (clients.length === 0) {
     return res.status(500).json({
       error: "Không tìm thấy GEMINI_API_KEY. Vui lòng định cấu hình API Key trong phần cài đặt.",
     });
@@ -131,7 +164,7 @@ Mục tiêu chính: Phân tích ý tưởng thô và đề xuất chính xác 3 
 
 Hãy phân tích và trả về định dạng JSON thuần thúy theo cấu trúc của Schema như yêu cầu.`;
 
-    const response = await generateWithRetry(activeAi, {
+    const response = await generateWithRetry(clients, {
       model: "gemini-3.5-flash",
       contents: userPrompt,
       config: {
@@ -182,8 +215,8 @@ Hãy phân tích và trả về định dạng JSON thuần thúy theo cấu tr�
 
 // STAGE 2: Generate Detailed Initiative Endpoint
 app.post("/api/generate-initiative", async (req, res) => {
-  const activeAi = getAiClient(req);
-  if (!activeAi) {
+  const clients = getAiClients(req);
+  if (clients.length === 0) {
     return res.status(500).json({
       error: "Không tìm thấy GEMINI_API_KEY. Vui lòng định cấu hình API Key trong phần cài đặt.",
     });
@@ -207,7 +240,7 @@ QUY TẮC CHỐNG AI MẠNH & THỂ THỨC:
 - Dẫn chứng số liệu, ví dụ sinh động bám sát môn ${inputData.subject}.`;
 
     const generatePart = async (partInstruction: string, partPrompt: string) => {
-      const response = await generateWithRetry(activeAi, {
+      const response = await generateWithRetry(clients, {
         model: "gemini-3.5-flash",
         contents: partPrompt,
         config: {
@@ -305,8 +338,8 @@ YÊU CẦU: Trình bày sâu sắc bài học kinh nghiệm cá nhân. Liệt k�
 
 // STAGE 3: Refine & Expand Initiative Endpoint (4000 - 4500 words constraint)
 app.post("/api/refine-initiative", async (req, res) => {
-  const activeAi = getAiClient(req);
-  if (!activeAi) {
+  const clients = getAiClients(req);
+  if (clients.length === 0) {
     return res.status(500).json({
       error: "Không tìm thấy GEMINI_API_KEY. Vui lòng định cấu hình API Key trong phần cài đặt.",
     });
@@ -480,7 +513,7 @@ Sau khi đáp ứng, hãy ĐIỀU CHỈNH và MỞ RỘNG tất cả các phần
 
 Hãy phân tích và trả về định dạng JSON thuần thúy theo cấu trúc của Schema như yêu cầu.`;
 
-    const response = await generateWithRetry(activeAi, {
+    const response = await generateWithRetry(clients, {
       model: "gemini-3.5-flash",
       contents: userPrompt,
       config: {
@@ -529,7 +562,15 @@ async function startServer() {
   } else {
     // Production static serving
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('sw.js') || filePath.endsWith('manifest.json')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        }
+      }
+    }));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
